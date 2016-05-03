@@ -7,21 +7,21 @@ import java.nio.channels.*;
 import java.util.Iterator;
 import java.util.Set;
 
-public class Client {
-    String remoteAddr;
-    int port;
-    SocketChannel client;
-    DatagramChannel clientUdp;
-    Selector selector = null;
-    SelectionKey selk = null;
+class Client {
+    private String remoteAddr;
+    private int port;
+    private SocketChannel client;
+    private DatagramChannel clientUdp;
+    private Selector selector = null;
+    private SelectionKey selk = null;
 
-    int command = 0;
-    String args = null;
+    private int command = 0;
+    private String args = null;
     Client(String ra, int p){
         remoteAddr = ra;
         port = p;
     }
-    int connect(){
+    private int connect(){
         try {
             client = SocketChannel.open();
             clientUdp = DatagramChannel.open();
@@ -119,7 +119,7 @@ public class Client {
                 }
                 if (key.isValid())
                 if (key.isWritable()){
-                    if(args != null){
+                    if(args != null){           // любая команда с агрументами если имеются
                         ByteBuffer bb = ByteBuffer.allocate(1 + Integer.BYTES + args.length());
                         bb.put((byte)command);
                         bb.putInt(args.length());
@@ -133,7 +133,7 @@ public class Client {
                         }
                         args = null;
                     }
-                    else if( command == 5){
+                    else if( command == 5){     // exit
                         ByteBuffer bb = ByteBuffer.wrap(new byte[]{5});
                         try {
                             while(bb.hasRemaining())
@@ -144,7 +144,7 @@ public class Client {
                         }
                         return 1;
                     }
-                    else if(command == 7 && expectedPacket != 0){
+                    else if(command == 7 && expectedPacket != 0){   //если вдруг мы потеряли несколько пакетов
                         ByteBuffer bb = ByteBuffer.allocate(Integer.BYTES);
                         bb.putInt((int)expectedPacket);
                         bb.flip();
@@ -174,14 +174,15 @@ public class Client {
             }
         }
     }
-    FileWriter file = null;
-    long packetsLeft = 0;
-    long packetsCount = 0;
-    long expectedPacket = 0;
-    boolean process(ByteBuffer bb){
+    private FileWriter file = null;
+    private long packetsLeft = 0;
+    private long packetsCount = 0;
+    private long expectedPacket = 0;
+
+    private boolean process(ByteBuffer bb){
         if(command == 0)
             return true;
-        if(command == 1 || command == 2){
+        if(command == 1 || command == 2){   //echo. time
             bb.flip();
             String s = new String(bb.array());
             s = s.substring(0, bb.limit());
@@ -189,7 +190,7 @@ public class Client {
             command = 0;
             bb.clear();
         }
-        if(command == 3 || command == 4){
+        if(command == 3 || command == 4){       //приём длинны файла
             bb.flip();
             long length = bb.getLong();
             if(command == 3) {
@@ -219,7 +220,7 @@ public class Client {
                 }
             }
         }
-        if(command == 6){
+        if(command == 6){               // tcpContent
             if(!bb.hasRemaining() || packetsLeft == 1){
                 packetsLeft--;
                 //System.out.print("\rPacketsLeft: " + String.valueOf(packetsLeft));
@@ -246,10 +247,10 @@ public class Client {
             }
             else return true;
         }
-        if(command == 7){
+        if(command == 7){       // udpContent
             if(!bb.hasRemaining() || packetsLeft == 1){
                 //System.out.print("\rPacketsLeft: " + String.valueOf(packetsLeft));
-                if(packetsLeft == 1){
+                if(packetsLeft == 1){           // lastPacket
                     try {
                         packetsLeft--;
                         file.append(new String(bb.array()), 4, bb.position());

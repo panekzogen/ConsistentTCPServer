@@ -9,12 +9,11 @@ import java.util.Iterator;
 import java.util.Set;
 
 public class TCPServer{
-    ArrayList<ClientContext> clients;
     private ServerSocketChannel server;
-
     private Selector selector = null;
 
-    ClientContext prevClient;
+    private ArrayList<ClientContext> clients;
+    private ClientContext prevClient;
     private static SocketAddress prevClientAddr = null;
 
     TCPServer(int port){
@@ -27,7 +26,7 @@ public class TCPServer{
         }
         clients = new ArrayList<ClientContext>();
     }
-    public void run(){
+    void run(){
         try {
             selector = Selector.open();
         } catch (IOException e) {
@@ -39,6 +38,7 @@ public class TCPServer{
         } catch (ClosedChannelException e) {
             e.printStackTrace();
         }
+
         NeedForAccept:
         while (true) {
             int readyChannels = 0;
@@ -50,9 +50,17 @@ public class TCPServer{
 
             Set<SelectionKey> selectedKeys = selector.selectedKeys();
             Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+
+            /**
+             * Перебор всех доступных ключей полученых с помощью selector.select()
+             * По ключу можно получить канал, который его зарегестрировал
+             *
+             * Регистрация ключей проходит в конструкторе ClientContext после accept()
+             */
             while (keyIterator.hasNext()) {
                 SelectionKey key = keyIterator.next();
-                if(key.isAcceptable()){
+
+                if(key.isAcceptable()){              //ready for accept
                     try {
                         clients.add(new ClientContext(server.accept(), selector));
                         keyIterator.remove();
@@ -61,8 +69,9 @@ public class TCPServer{
                         e.printStackTrace();
                     }
                 }
+
                 if (key.isValid())
-                    if (key.isReadable()) {
+                    if (key.isReadable()) {          //ready for read
                         for (ClientContext c : clients) {
                             if (c.socket.equals(key.channel())) {
                                 try {
@@ -93,8 +102,9 @@ public class TCPServer{
                             }
                         }
                     }
+
                 if (key.isValid())
-                    if (key.isWritable()) {
+                    if (key.isWritable()) {         //ready for write
                         for (ClientContext c : clients) {
                             if (c.socket.equals(key.channel())) {
                                 try {

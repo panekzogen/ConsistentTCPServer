@@ -13,17 +13,26 @@ enum Action{
         None, Echo, Time, File, FileUdp, Close, FileContent, FileUdpContent
         };
 
-public class ClientContext {
+/**
+ * Поддерживаемые операции:
+ *      Echo, Time, TCP and UDP file downloading
+ *
+ * Как вы можете заметить из первых строк, инкапсуляция почти на нуле
+ * Что говорит о качестве кода очень многое
+ */
+class ClientContext {
     SocketChannel socket;
     DatagramChannel socketUdp;
     private SelectionKey tcpKey;
     private SelectionKey udpKey;
     private Selector sel;
+
     private Action action;
     private int argsSize;
     private String filename;
     private DataInputStream file;
     private long filePos;
+
     private ByteBuffer incomingData; //ArrayDeque mb
     private ByteBuffer answer;
     private Boolean NeedAnsWriting;
@@ -43,7 +52,12 @@ public class ClientContext {
         }
         change(true);
     }
-    void change(boolean tcp){
+
+    /**
+     * Переключение между двумя сокетами tcp/udp
+     * @param tcp
+     */
+    private void change(boolean tcp){
         if(tcp){
             try {
                 socket.configureBlocking(false);
@@ -77,7 +91,7 @@ public class ClientContext {
         }
     }
 
-    void clear(){
+    private void clear(){
         argsSize = 0;
         if( file != null)
             try {
@@ -99,13 +113,18 @@ public class ClientContext {
         incomingData.put(bb.slice().duplicate());
         incomingData.flip();
     }
+
+    /**
+     * Отсылка ответа по необходимости
+     * @throws IOException
+     */
     void sendAnswer() throws IOException {
-        if(NeedAnsWriting == true) {
-            if (file == null) {
+        if(NeedAnsWriting) {
+            if (file == null) {     //если не файл то это echo или time для которых нужно просто отослать ответ
                 answer.flip();
                 socket.write(answer);
                 if (!answer.hasRemaining()) clear();
-            } else if (action == Action.FileContent){
+            } else if (action == Action.FileContent){   //содержимое файла tcp
                 if(!answer.hasRemaining()) {
                     answer.clear();
                     if(answer.position() == 0){
@@ -117,12 +136,12 @@ public class ClientContext {
                     } else clear();}
                 }
                 else socket.write(answer);
-            } else if(action == Action.FileUdpContent){
+            } else if(action == Action.FileUdpContent){     //содежимое файла udp
                 if(!answer.hasRemaining()) {
                     answer.clear();
                     byte[] buf = new byte[1020];
                     if ((argsSize = file.read(buf, 0, 1020)) != -1) {
-                        answer.putInt((int) filePos);
+                        answer.putInt((int) filePos);       //пакет udp содержит еще и номер
                         answer.put(buf, 0, argsSize);
                         answer.flip();
                         socketUdp.write(answer);
@@ -130,7 +149,7 @@ public class ClientContext {
                     }
                 }
                 else socketUdp.write(answer);
-            }else if(action == Action.File || action == Action.FileUdp){
+            }else if(action == Action.File || action == Action.FileUdp){ //отсылаем размер файла и переходим к его содержимому
                 answer.flip();
                 socket.write(answer);
                 answer.clear();
@@ -145,8 +164,21 @@ public class ClientContext {
             }
         }
     }
+
+    /**
+     * Все операции кроме передачи файла по Udp(FileUdpContent) действуют по
+     * принципу: подготовить ответ и выставить флаг на его отправку
+     *
+     * При передаче файла по udp мы сталкиваемся с проблемой потери пакетов
+     * @return
+     */
     boolean processed(){
-        if( action == Action.FileUdpContent){
+        /**
+         * Собственно при передаче файла по Udp вместе с его отправкой
+         * принимаем еще и номер ожидаемого пакета, если произошла потеря пакетов
+         */
+        if( action == Action.FileUdpContent)
+        {
             filePos = incomingData.getInt();
             incomingData.compact();
             try {
@@ -166,12 +198,14 @@ public class ClientContext {
             }
             return false;
         }
+
         if ( action == Action.None )
         {
             if(!incomingData.hasRemaining())
                 return false;
             action = Action.values()[incomingData.get()];
         }
+
         if ( action == Action.File || action == Action.FileUdp)
         {
             argsSize = incomingData.getInt();
@@ -190,6 +224,7 @@ public class ClientContext {
             NeedAnsWriting = true;
             return false;
         }
+
         if ( action == Action.Echo )
         {
             if(answer.position() == 0){
@@ -219,6 +254,7 @@ public class ClientContext {
         if( action == Action.Close) return false;
         return true;
     }
+
     void dropKeys(){
         if(tcpKey != null)
             tcpKey.cancel();
@@ -228,7 +264,7 @@ public class ClientContext {
         udpKey = null;
     }
 
-    public Action getAction() {
+    Action getAction() {
         return action;
     }
 
